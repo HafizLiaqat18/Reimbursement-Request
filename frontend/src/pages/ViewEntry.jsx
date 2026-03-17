@@ -61,7 +61,8 @@ export default function ViewEntry() {
     // Replace relative image URL with absolute so the new window can load it
     const origin = window.location.origin;
     const html = letterEl.outerHTML
-      .replace('url(/letter-head.png)', `url(${origin}/letter-head.png)`);
+      .replaceAll('url(/top-letter-head.png)', `url(${origin}/top-letter-head.png)`)
+      .replaceAll('url(/bottom-letter-head.png)', `url(${origin}/bottom-letter-head.png)`);
 
     const win = window.open('', '_blank', 'width=900,height=1100');
     win.document.write(`<!DOCTYPE html>

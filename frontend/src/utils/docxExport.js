@@ -34,7 +34,7 @@ function run(text, opts = {}) {
   return new TextRun({
     text,
     font: 'Times New Roman',
-    size: opts.size ?? 28,          // half-points (28 = 14pt)
+    size: opts.size ?? 26,          // half-points (26 = 13pt)
     bold: opts.bold ?? false,
     underline: opts.underline ? {} : undefined,
     color: opts.color ?? '000000',
@@ -48,8 +48,8 @@ function para(children, opts = {}) {
     alignment: opts.align ?? AlignmentType.LEFT,
     spacing: {
       before: opts.before ?? 0,
-      after:  opts.after  ?? 120,
-      line:   opts.line   ?? 276,
+      after:  opts.after  ?? 90,
+      line:   opts.line   ?? 252,
     },
     border: opts.border,
     indent: opts.indent,
@@ -87,24 +87,25 @@ function buildExpenseSuffix(exp) {
 export const exportToDocx = async (reimbursement) => {
   const formattedDate = formatOrdinalDate(reimbursement.date);
 
-  // Fetch letterhead background
-  const letterheadData = await fetchImageBuffer('/letter-head.png');
+  // Fetch top and bottom letterhead images
+  const topLetterheadData = await fetchImageBuffer('/top-letter-head.png');
+  const bottomLetterheadData = await fetchImageBuffer('/bottom-letter-head.png');
 
-  // ── LETTERHEAD BACKGROUND PARAGRAPH ──────────────────────────────────────
-  // Places letter-head.png as a full-page floating image behind all text.
-  const letterheadPara = letterheadData
+  // ── LETTERHEAD IMAGE PARAGRAPHS ──────────────────────────────────────────
+  // Places top and bottom images behind all text with side spacing.
+  const topLetterheadPara = topLetterheadData
     ? new Paragraph({
         children: [
           new ImageRun({
-            data: letterheadData,
+            data: topLetterheadData,
             transformation: {
-              width:  794,   // A4 at 96dpi: 210mm / 25.4 * 96 ≈ 794px
-              height: 1123,  // A4 at 96dpi: 297mm / 25.4 * 96 ≈ 1123px
+              width: 710,
+              height: 139,
             },
             floating: {
               horizontalPosition: {
                 relative: HorizontalPositionRelativeFrom.PAGE,
-                offset: 0,
+                offset: convertMillimetersToTwip(11),
               },
               verticalPosition: {
                 relative: VerticalPositionRelativeFrom.PAGE,
@@ -120,10 +121,38 @@ export const exportToDocx = async (reimbursement) => {
       })
     : null;
 
+  const bottomLetterheadPara = bottomLetterheadData
+    ? new Paragraph({
+        children: [
+          new ImageRun({
+            data: bottomLetterheadData,
+            transformation: {
+              width: 710,
+              height: 61,
+            },
+            floating: {
+              horizontalPosition: {
+                relative: HorizontalPositionRelativeFrom.PAGE,
+                offset: convertMillimetersToTwip(11),
+              },
+              verticalPosition: {
+                relative: VerticalPositionRelativeFrom.PAGE,
+                offset: convertMillimetersToTwip(281),
+              },
+              allowOverlap: true,
+              behindDocument: true,
+              wrap: { type: TextWrappingType.NONE },
+            },
+          }),
+        ],
+        spacing: { before: 0, after: 0 },
+      })
+    : null;
+
   // ── DATE ──────────────────────────────────────────────────────────────────
   const datePara = para(
     [run(`Dated: ${formattedDate}`, { bold: true })],
-    { before: 0, after: 160 }
+    { before: 0, after: 120 }
   );
 
   // ── SUBJECT ───────────────────────────────────────────────────────────────
@@ -133,13 +162,13 @@ export const exportToDocx = async (reimbursement) => {
       run('    '),
       run(reimbursement.subject || 'Reimbursement Request', { bold: true, underline: true }),
     ],
-    { after: 200 }
+    { after: 160 }
   );
 
   // ── BODY PARA 1 ───────────────────────────────────────────────────────────
   const bodyPara1 = para(
     [run('With reference to the attached approval letter, I kindly request reimbursement for the following official expenses:')],
-    { align: AlignmentType.JUSTIFIED, after: 120 }
+    { align: AlignmentType.JUSTIFIED, after: 100 }
   );
 
   // ── EXPENSE BULLET LIST ───────────────────────────────────────────────────
@@ -153,7 +182,7 @@ export const exportToDocx = async (reimbursement) => {
       ],
       {
         indent: { left: convertMillimetersToTwip(7) },
-        after: 80,
+        after: 60,
       }
     );
   });
@@ -161,29 +190,29 @@ export const exportToDocx = async (reimbursement) => {
   // ── BODY PARA 2 ───────────────────────────────────────────────────────────
   const bodyPara2 = para(
     [run('The above payments were made from my personal account for official use. Relevant invoices/receipts are attached for your processing.')],
-    { align: AlignmentType.JUSTIFIED, before: 120, after: 120 }
+    { align: AlignmentType.JUSTIFIED, before: 90, after: 90 }
   );
 
   // ── BODY PARA 3 ───────────────────────────────────────────────────────────
   const bodyPara3 = para(
     [run('I kindly request reimbursement of the amount, including applicable taxes, at your earliest convenience.')],
-    { align: AlignmentType.JUSTIFIED, after: 240 }
+    { align: AlignmentType.JUSTIFIED, after: 180 }
   );
 
   // ── ACCOUNT DETAILS ───────────────────────────────────────────────────────
   const accountHeader = para(
     [run('Account Details:', { bold: true, underline: true })],
-    { after: 100 }
+    { after: 80 }
   );
 
   const holderPara = para(
     [run('Account Holder: ', { bold: true }), run(reimbursement.accountDetails.accountHolder)],
-    { after: 60 }
+    { after: 40 }
   );
 
   const bankPara = para(
     [run('Bank: ', { bold: true }), run(reimbursement.accountDetails.bank)],
-    { after: 60 }
+    { after: 40 }
   );
 
   const accountPara = para(
@@ -249,8 +278,9 @@ export const exportToDocx = async (reimbursement) => {
 
   // ── BUILD DOCUMENT ────────────────────────────────────────────────────────
   const children = [
-    // letterhead MUST be first so it sits behind all content
-    ...(letterheadPara ? [letterheadPara] : []),
+    // Floating images should be first so they stay behind content.
+    ...(topLetterheadPara ? [topLetterheadPara] : []),
+    ...(bottomLetterheadPara ? [bottomLetterheadPara] : []),
     datePara,
     subjectPara,
     bodyPara1,
@@ -269,7 +299,7 @@ export const exportToDocx = async (reimbursement) => {
     styles: {
       default: {
         document: {
-          run: { font: 'Times New Roman', size: 28 }, // 28 half-points = 14pt
+          run: { font: 'Times New Roman', size: 26 }, // 26 half-points = 13pt
         },
       },
     },
