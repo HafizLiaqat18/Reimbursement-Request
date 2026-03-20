@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { getAllReimbursements, deleteReimbursement } from '../services/api';
+import { getAllReimbursements, deleteReimbursement, getErrorMessage } from '../services/api';
 import { exportToDocx } from '../utils/docxExport';
 import { formatDateShort, formatCurrency } from '../utils/formatters';
 
@@ -9,6 +9,16 @@ export default function Dashboard() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState(null);
+  const now = new Date();
+  const totalEntries = data.length;
+  const totalPkr = data.reduce(
+    (grand, item) => grand + item.expenses.reduce((sum, expense) => sum + (expense.pkrAmount || 0), 0),
+    0
+  );
+  const thisMonthEntries = data.filter((item) => {
+    const itemDate = new Date(item.date);
+    return itemDate.getMonth() === now.getMonth() && itemDate.getFullYear() === now.getFullYear();
+  }).length;
 
   const fetchData = async () => {
     try {
@@ -16,7 +26,7 @@ export default function Dashboard() {
       const res = await getAllReimbursements();
       setData(res.data.data);
     } catch (err) {
-      toast.error('Failed to fetch reimbursements');
+      toast.error(getErrorMessage(err, 'Failed to fetch reimbursements'));
     } finally {
       setLoading(false);
     }
@@ -33,7 +43,7 @@ export default function Dashboard() {
       toast.success('Entry deleted successfully');
       fetchData();
     } catch (err) {
-      toast.error('Failed to delete entry');
+      toast.error(getErrorMessage(err, 'Failed to delete entry'));
     }
   };
 
@@ -43,7 +53,7 @@ export default function Dashboard() {
       await exportToDocx(item);
       toast.success('Word document downloaded');
     } catch (err) {
-      toast.error('Failed to generate Word document');
+      toast.error(getErrorMessage(err, 'Failed to generate Word document'));
     } finally {
       setDownloadingId(null);
     }
@@ -60,13 +70,39 @@ export default function Dashboard() {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Dashboard</h2>
-        <Link
-          to="/create"
-          className="bg-green-700 hover:bg-green-800 text-white px-5 py-2 rounded-md font-medium transition"
-        >
-          + New Entry
-        </Link>
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800">Dashboard</h2>
+          <p className="text-sm text-gray-500">Track reimbursement requests and export letters</p>
+        </div>
+        <div className="flex gap-2">
+          <Link
+            to="/stamps"
+            className="bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded-md font-medium transition"
+          >
+            Manage Stamps
+          </Link>
+          <Link
+            to="/create"
+            className="bg-green-700 hover:bg-green-800 text-white px-5 py-2 rounded-md font-medium transition"
+          >
+            + New Entry
+          </Link>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+        <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Total Entries</p>
+          <p className="text-2xl font-bold text-gray-800">{totalEntries}</p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Total PKR</p>
+          <p className="text-2xl font-bold text-gray-800">{formatCurrency(totalPkr)}</p>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Entries This Month</p>
+          <p className="text-2xl font-bold text-gray-800">{thisMonthEntries}</p>
+        </div>
       </div>
 
       {data.length === 0 ? (
@@ -81,6 +117,7 @@ export default function Dashboard() {
               <tr>
                 <th className="px-4 py-3">#</th>
                 <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">Subject</th>
                 <th className="px-4 py-3">Account Holder</th>
                 <th className="px-4 py-3 text-right">Total Amount (PKR)</th>
                 <th className="px-4 py-3 text-center">Actions</th>
@@ -96,6 +133,9 @@ export default function Dashboard() {
                   <tr key={item._id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-gray-600">{idx + 1}</td>
                     <td className="px-4 py-3">{formatDateShort(item.date)}</td>
+                    <td className="px-4 py-3 max-w-56 truncate" title={item.subject}>
+                      {item.subject}
+                    </td>
                     <td className="px-4 py-3 font-medium">
                       {item.accountDetails.accountHolder}
                     </td>
@@ -115,7 +155,7 @@ export default function Dashboard() {
                           disabled={downloadingId === item._id}
                           className="bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white px-3 py-1 rounded text-xs font-medium transition cursor-pointer"
                         >
-                          {downloadingId === item._id ? '...' : 'Word'}
+                          {downloadingId === item._id ? 'Generating...' : 'Word'}
                         </button>
                         <button
                           onClick={() => handleDelete(item._id)}

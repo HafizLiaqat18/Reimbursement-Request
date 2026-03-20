@@ -1,4 +1,4 @@
-export const formatCurrency = (amount, currency = 'PKR') => {
+export const formatCurrency = (amount) => {
   if (amount === undefined || amount === null || amount === '') return '---';
   return new Intl.NumberFormat('en-PK', {
     minimumFractionDigits: 2,

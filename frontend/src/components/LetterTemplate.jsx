@@ -10,6 +10,14 @@ function expenseLine(exp) {
   return ` \u2013 ${exp.currency} ${formatCurrency(exp.amount)}`;
 }
 
+function getNormalizedSubject(subject) {
+  const cleaned = String(subject || '').trim();
+  if (!cleaned) return 'Request for Reimbursement';
+  return cleaned
+    .replace(/reuqest/gi, 'Request')
+    .replace(/reimbursement request/gi, 'Request for Reimbursement');
+}
+
 /* Signature block: line immediately followed by tight text — no gap */
 function SigBlock({ title, dept, org }) {
   return (
@@ -29,8 +37,59 @@ function SigBlock({ title, dept, org }) {
   );
 }
 
+function getStampPlacements(data) {
+  if (Array.isArray(data.stampPlacements) && data.stampPlacements.length > 0) {
+    return data.stampPlacements
+      .slice()
+      .sort((a, b) => (a.order || 0) - (b.order || 0))
+      .map((item, index) => {
+        const stamp = item.stamp || {};
+        return {
+          key: `${stamp._id || 'stamp'}-${index}`,
+          title: stamp.title || 'Stamp',
+          dept: stamp.department || '',
+          org: stamp.organization || '',
+          alignment: item.alignment || stamp.defaultAlignment || 'right',
+          lineWidthMm: item.lineWidthMm || stamp.defaultLineWidthMm || 62,
+          spacingBeforeMm: item.spacingBeforeMm || 0,
+        };
+      });
+  }
+
+  return [
+    {
+      key: 'default-1',
+      title: 'Assistant Director',
+      dept: 'Software Development & Operations',
+      org: 'Punjab Sahulat Bazaars Authority',
+      alignment: 'right',
+      lineWidthMm: 62,
+      spacingBeforeMm: 15,
+    },
+    {
+      key: 'default-2',
+      title: 'Additional Director',
+      dept: 'Project Planning & Special Initiatives',
+      org: 'Punjab Sahulat Bazaars Authority',
+      alignment: 'right',
+      lineWidthMm: 62,
+      spacingBeforeMm: 25,
+    },
+    {
+      key: 'default-3',
+      title: 'Director General',
+      dept: '',
+      org: 'Punjab Sahulat Bazaars Authority',
+      alignment: 'left',
+      lineWidthMm: 55,
+      spacingBeforeMm: 25,
+    },
+  ];
+}
+
 export default function LetterTemplate({ data }) {
   const { day, suffix, month, year } = getOrdinalParts(data.date);
+  const placements = getStampPlacements(data);
 
   return (
     <div
@@ -39,6 +98,7 @@ export default function LetterTemplate({ data }) {
         width: '210mm',
         height: '297mm',
         overflow: 'hidden',
+        position: 'relative',
         backgroundImage: 'url(/top-letter-head.png), url(/bottom-letter-head.png)',
         backgroundSize: '188mm auto, 188mm auto',
         backgroundRepeat: 'no-repeat, no-repeat',
@@ -64,7 +124,7 @@ export default function LetterTemplate({ data }) {
       {/* SUBJECT */}
       <p style={{ margin: '0 0 2.5mm' }}>
         <strong>Subject:</strong>&nbsp;
-        <strong><u>{data.subject || 'Reimbursement Request'}</u></strong>
+        <strong><u>{getNormalizedSubject(data.subject)}</u></strong>
       </p>
 
       {/* BODY 1 */}
@@ -109,39 +169,29 @@ export default function LetterTemplate({ data }) {
       {/* SPACER — fills remaining space before signatures */}
       <div style={{ flex: 1 }} />
 
-      {/* SIGNATURES — 3 rows: AD right, Addl Dir right, DG left */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '25mm' }}>
-
-        {/* Row 1: Assistant Director — right */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '15mm' }}>
-          <div style={{ width: '62mm' }}>
-            <SigBlock
-              title="Assistant Director"
-              dept="Software Development & Operations"
-              org="Punjab Sahulat Bazaars Authority"
-            />
+      {/* DYNAMIC STAMPS */}
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {placements.map((placement) => (
+          <div
+            key={placement.key}
+            style={{
+              display: 'flex',
+              justifyContent:
+                placement.alignment === 'left'
+                  ? 'flex-start'
+                  : placement.alignment === 'center'
+                    ? 'center'
+                    : 'flex-end',
+              marginTop: `${placement.spacingBeforeMm}mm`,
+            }}
+          >
+            <div style={{ width: `${placement.lineWidthMm}mm` }}>
+              <SigBlock title={placement.title} dept={placement.dept} org={placement.org} />
+            </div>
           </div>
-        </div>
-
-        {/* Row 2: Additional Director — right */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <div style={{ width: '62mm' }}>
-            <SigBlock
-              title="Additional Director"
-              dept="Project Planning & Special Initiatives"
-              org="Punjab Sahulat Bazaars Authority"
-            />
-          </div>
-        </div>
-
-        {/* Row 3: Director General — left */}
-        <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-          <div style={{ width: '55mm' }}>
-            <SigBlock title="Director General" org="Punjab Sahulat Bazaars Authority" />
-          </div>
-        </div>
-
+        ))}
       </div>
+
     </div>
   );
 }

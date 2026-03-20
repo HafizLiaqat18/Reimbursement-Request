@@ -1,9 +1,9 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import html2pdf from 'html2pdf.js';
-import { getReimbursement } from '../services/api';
-import { exportToDocx } from '../utils/docxExport';
+import { getReimbursement, getErrorMessage } from '../services/api';
+import { exportToDocx, getLetterMarkup, printLetter } from '../utils/docxExport';
 import { formatDate } from '../utils/formatters';
 import LetterTemplate from '../components/LetterTemplate';
 
@@ -12,7 +12,6 @@ export default function ViewEntry() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [generatingDocx, setGeneratingDocx] = useState(false);
-  const letterRef = useRef();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -20,7 +19,7 @@ export default function ViewEntry() {
         const res = await getReimbursement(id);
         setData(res.data.data);
       } catch (err) {
-        toast.error('Failed to load reimbursement');
+        toast.error(getErrorMessage(err, 'Failed to load reimbursement'));
       } finally {
         setLoading(false);
       }
@@ -29,7 +28,13 @@ export default function ViewEntry() {
   }, [id]);
 
   const handleDownloadPDF = () => {
-    const element = letterRef.current;
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'fixed';
+    wrapper.style.left = '-99999px';
+    wrapper.style.top = '0';
+    wrapper.innerHTML = getLetterMarkup(data);
+    document.body.appendChild(wrapper);
+    const element = wrapper.firstElementChild;
     const opt = {
       margin: 0,
       filename: `Reimbursement_${formatDate(data.date).replace(/ /g, '_')}.pdf`,
@@ -37,7 +42,16 @@ export default function ViewEntry() {
       html2canvas: { scale: 2, useCORS: true, letterRendering: true },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
     };
-    html2pdf().set(opt).from(element).save();
+    html2pdf()
+      .set(opt)
+      .from(element)
+      .save()
+      .then(() => {
+        document.body.removeChild(wrapper);
+      })
+      .catch(() => {
+        document.body.removeChild(wrapper);
+      });
     toast.success('PDF download started');
   };
 
@@ -47,62 +61,18 @@ export default function ViewEntry() {
       await exportToDocx(data);
       toast.success('Word document downloaded');
     } catch (err) {
-      console.error(err);
-      toast.error('Failed to generate Word document');
+      toast.error(getErrorMessage(err, 'Failed to generate Word document'));
     } finally {
       setGeneratingDocx(false);
     }
   };
 
   const handlePrint = () => {
-    const letterEl = letterRef.current?.firstChild;
-    if (!letterEl) return;
-
-    // Replace relative image URL with absolute so the new window can load it
-    const origin = window.location.origin;
-    const html = letterEl.outerHTML
-      .replaceAll('url(/top-letter-head.png)', `url(${origin}/top-letter-head.png)`)
-      .replaceAll('url(/bottom-letter-head.png)', `url(${origin}/bottom-letter-head.png)`);
-
-    const win = window.open('', '_blank', 'width=900,height=1100');
-    win.document.write(`<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Reimbursement Letter</title>
-    <style>
-      @page { size: A4 portrait; margin: 0; }
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body {
-        width: 210mm;
-        height: 297mm;
-        overflow: hidden;
-        background: white;
-      }
-      .letter-body {
-        width: 210mm !important;
-        height: 297mm !important;
-        overflow: hidden !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-      }
-    </style>
-  </head>
-  <body>${html}</body>
-</html>`);
-    win.document.close();
-
-    // Wait for the background image to load, then print
-    win.onload = () => {
-      win.focus();
-      win.print();
-      win.close();
-    };
-
-    // Fallback if onload doesn't fire (some browsers)
-    setTimeout(() => {
-      try { win.print(); win.close(); } catch (_) {}
-    }, 1200);
+    try {
+      printLetter(data);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to open print view'));
+    }
   };
 
   if (loading) {
@@ -128,19 +98,22 @@ export default function ViewEntry() {
     <div>
       {/* Action Bar — hidden in print */}
       <div className="no-print flex justify-between items-center mb-6 flex-wrap gap-3">
-        <Link
-          to="/"
-          className="text-gray-600 hover:text-gray-800 font-medium transition"
-        >
-          ← Back to Dashboard
-        </Link>
+        <div>
+          <Link
+            to="/"
+            className="text-gray-600 hover:text-gray-800 font-medium transition"
+          >
+            ← Back to Dashboard
+          </Link>
+          <p className="text-sm text-gray-500 mt-1">Review and export this reimbursement letter</p>
+        </div>
 
         <div className="flex gap-2 flex-wrap">
           <button
             onClick={handleDownloadPDF}
             className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium transition cursor-pointer"
           >
-            📄 Download PDF
+            Download PDF
           </button>
 
           <button
@@ -148,21 +121,21 @@ export default function ViewEntry() {
             disabled={generatingDocx}
             className="bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white px-4 py-2 rounded-md text-sm font-medium transition cursor-pointer"
           >
-            {generatingDocx ? '⏳ Generating...' : '📝 Download Word'}
+            {generatingDocx ? 'Generating...' : 'Download Word'}
           </button>
 
           <button
             onClick={handlePrint}
             className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium transition cursor-pointer"
           >
-            🖨️ Print
+            Print
           </button>
         </div>
       </div>
 
       {/* Letter Preview */}
       <div className="flex justify-center">
-        <div ref={letterRef}>
+        <div>
           <LetterTemplate data={data} />
         </div>
       </div>
